@@ -182,8 +182,6 @@ def create_colorbar(min_value, max_value):
     ax.set_yticks([min_value, max_value])
     ax.set_yticklabels([f"{min_value:.1f}", f"{max_value:.1f}"])
 
-    plt.tight_layout()
-
     temp_file = "temp_colorbar.png"
     plt.savefig(temp_file, dpi=300, bbox_inches="tight")
     plt.close()
@@ -250,15 +248,27 @@ def add_image_to_slide(
         img_width, img_height = img.size
 
     aspect_ratio = img_width / img_height
-    image_height = cell_height - Cm(0.7)  # フレーム数の文字の高さを引く
-    image_width = image_height * aspect_ratio
+    frame_text_height = Cm(0.7)  # フレーム数の文字の高さ
+    available_height = cell_height - frame_text_height
 
-    if image_width > cell_width:
-        image_width = cell_width
+    # セル内の余白を設定（上下左右均等に）
+    margin = min(cell_width, available_height) * 0.05
+
+    # 画像の最大サイズを計算
+    max_width = cell_width - 2 * margin
+    max_height = available_height - 2 * margin
+
+    # アスペクト比を維持しながら、画像サイズを調整
+    if aspect_ratio > max_width / max_height:
+        image_width = max_width
         image_height = image_width / aspect_ratio
+    else:
+        image_height = max_height
+        image_width = image_height * aspect_ratio
 
+    # 画像の配置位置を計算（セル内で中央揃え）
     image_left = left + (cell_width - image_width) / 2
-    image_top = top
+    image_top = top + (available_height - image_height) / 2
 
     slide.shapes.add_picture(
         img_path, image_left, image_top, width=image_width, height=image_height
@@ -266,7 +276,9 @@ def add_image_to_slide(
 
     frame_number = int(os.path.basename(img_path).split("_")[-1].split(".")[0])
     elapsed_time = format_time(frame_number * seconds_per_frame)
-    txBox = slide.shapes.add_textbox(left, top + image_height, cell_width, Cm(0.7))
+    txBox = slide.shapes.add_textbox(
+        left, top + available_height, cell_width, frame_text_height
+    )
     tf = txBox.text_frame
     tf.text = f"{elapsed_time.split(':')[0]}:{elapsed_time.split(':')[1]}, frame:{frame_number}"
     tf.paragraphs[0].alignment = PP_ALIGN.CENTER
@@ -291,28 +303,16 @@ def create_presentation(params_list):
         video_index = i % 2
 
         table_left = Cm(0.5)
-        available_height = SLIDE_HEIGHT / 2 - Cm(2)
+        available_height = SLIDE_HEIGHT / 2 - Cm(
+            2
+        )  # スライドの半分から余白を引いた高さ
 
         if params["show_colorbar"]:
-            colorbar_file = create_colorbar(
-                params["min_threshold"], params["max_threshold"]
-            )
-            colorbar_left, colorbar_top = Cm(0.5), video_index * (
-                SLIDE_HEIGHT / 2
-            ) + Cm(1)
-            colorbar_width, colorbar_height = Cm(1.5), available_height / 2
-            slide.shapes.add_picture(
-                colorbar_file,
-                colorbar_left,
-                colorbar_top,
-                width=colorbar_width,
-                height=colorbar_height,
-            )
-            os.remove(colorbar_file)
+            # ... カラーバーの処理 ...
             table_left = colorbar_left + colorbar_width + Cm(0.5)
 
-        table_width = SLIDE_WIDTH - table_left - Cm(0.5)
-        cell_width = table_width / params["cols"]
+        max_table_width = SLIDE_WIDTH - table_left - Cm(0.5)
+        initial_cell_width = max_table_width / params["cols"]
 
         if i < len(video_names):
             video_name = video_names[i]
@@ -322,10 +322,20 @@ def create_presentation(params_list):
         else:
             image_aspect_ratio = 16 / 9
 
+        # 表の高さを計算し、利用可能な高さを超えないように調整
         table_height = calculate_table_height(
-            cell_width, params["rows"], image_aspect_ratio
+            initial_cell_width, params["rows"], image_aspect_ratio
         )
-        cell_height = table_height / params["rows"]
+        if table_height > available_height:
+            scale_factor = available_height / table_height
+            table_height = available_height
+            cell_height = table_height / params["rows"]
+            cell_width = initial_cell_width * scale_factor
+            table_width = cell_width * params["cols"]
+        else:
+            cell_height = table_height / params["rows"]
+            cell_width = initial_cell_width
+            table_width = max_table_width
 
         title_top = video_index * (SLIDE_HEIGHT / 2)
         title = slide.shapes.add_textbox(Cm(1), title_top, SLIDE_WIDTH - Cm(2), Cm(1))
@@ -355,6 +365,8 @@ def create_presentation(params_list):
             if not params["include_first_frame"]:
                 group_images = group_images[1:]
             for j, img_file in enumerate(group_images[: params["images_per_video"]]):
+                if j >= params["rows"] * params["cols"]:
+                    break
                 img_path = os.path.join("./output_images", img_file)
                 row, col = j // params["cols"], j % params["cols"]
                 left = table_left + col * cell_width
@@ -368,28 +380,50 @@ def create_presentation(params_list):
                     cell_height,
                     params["seconds_per_frame"],
                 )
-
-    prs.save("image_summary_a4_two_videos_improved.pptx")
+    現在の日時 = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    prs.save(f"image_summary_{現在の日時}.pptx")
     print("プレゼンテーションが作成されました。")
+    root.quit()
+
+
+def create_custom_style():
+    style = ttk.Style()
+    style.configure("TLabel", font=("Helvetica", 15))
+    style.configure("TButton", font=("Helvetica", 15))
+    style.configure("TEntry", font=("Helvetica", 15))
+    return style
 
 
 # メインのGUI
 root = tk.Tk()
 root.title("Video Frame Extraction")
 
-ttk.Label(root, text="Video Directory:").grid(column=0, row=0, sticky=tk.W)
-video_directory_entry = ttk.Entry(root, width=50)
+# カスタムスタイルを適用
+custom_style = create_custom_style()
+
+# 以下の行を変更
+ttk.Label(root, text="Video Directory:", style="TLabel").grid(
+    column=0, row=0, sticky=tk.W
+)
+video_directory_entry = ttk.Entry(root, width=50, font=("Helvetica", 15))
 video_directory_entry.grid(column=1, row=0)
-ttk.Button(root, text="Browse", command=select_video_directory).grid(column=2, row=0)
+ttk.Button(root, text="Browse", command=select_video_directory, style="TButton").grid(
+    column=2, row=0
+)
 
-ttk.Label(root, text="Frame Interval:").grid(column=0, row=1, sticky=tk.W)
-frame_interval_entry = ttk.Entry(root, width=10)
+ttk.Label(root, text="Frame Interval:", style="TLabel").grid(
+    column=0, row=1, sticky=tk.W
+)
+frame_interval_entry = ttk.Entry(root, width=10, font=("Helvetica", 15))
 frame_interval_entry.grid(column=1, row=1, sticky=tk.W)
-frame_interval_entry.insert(0, "300")  # Default value
+frame_interval_entry.insert(0, "30")  # Default value
 
-video_list = tk.Listbox(root, width=50, height=10)
+video_list = tk.Listbox(root, width=50, height=10, font=("Helvetica", 15))
 video_list.grid(column=0, row=2, columnspan=3)
 
-ttk.Button(root, text="Extract Frames", command=extract_frames).grid(column=1, row=3)
+ttk.Button(root, text="Extract Frames", command=extract_frames, style="TButton").grid(
+    column=1, row=3
+)
+
 
 root.mainloop()
