@@ -2,6 +2,7 @@
   {
     "output_folder": "./output_images",
     "input_folder": "./input_video",
+    "frame_interval": 360,
     "show_colorbar": true,
     "images_per_video": 8,
     "rows": 2,
