@@ -1,0 +1,22 @@
+[
+  {
+    "output_folder": "./output_images",
+    "input_folder": "./input_video",
+    "show_colorbar": true,
+    "images_per_video": 8,
+    "rows": 2,
+    "cols": 4,
+    "include_first_frame": true,
+    "seconds_per_frame": 360,
+    "min_threshold": 0,
+    "max_threshold": 255
+  },
+  {
+    "show_colorbar": true,
+    "images_per_video": 6,
+    "rows": 2,
+    "cols": 3,
+    "min_threshold": 10,
+    "max_threshold": 200
+  }
+]
