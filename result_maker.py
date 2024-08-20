@@ -330,92 +330,112 @@ def create_gui():
     root = tk.Tk()
     root.title("Create Presentation")
 
-    # フォントを指定してUTF-8エンコーディングを使用
+    # Specify font and use UTF-8 encoding
     default_font = tkfont.nametofont("TkDefaultFont")
     default_font.configure(size=10, family="MS Gothic")
     root.option_add("*Font", default_font)
 
-    def browse_folder():
+    params_list = []
+
+    def browse_folder(entry_widget):
         folder_path = filedialog.askdirectory()
-        output_folder_entry.delete(0, tk.END)
-        output_folder_entry.insert(0, folder_path)
+        entry_widget.delete(0, tk.END)
+        entry_widget.insert(0, folder_path)
+
+    def add_param_form():
+        param_frame = ttk.Frame(main_frame, padding="10")
+        param_frame.pack(fill=tk.X, expand=True)
+
+        ttk.Label(param_frame, text="Output Folder").grid(column=0, row=0, sticky=tk.W)
+        param_frame.output_folder_entry = ttk.Entry(param_frame, width=50)
+        param_frame.output_folder_entry.grid(column=1, row=0, sticky=(tk.W, tk.E))
+        ttk.Button(
+            param_frame,
+            text="Browse",
+            command=lambda: browse_folder(param_frame.output_folder_entry),
+        ).grid(column=2, row=0, sticky=tk.W)
+
+        ttk.Label(param_frame, text="Images per Video").grid(
+            column=0, row=1, sticky=tk.W
+        )
+        param_frame.images_per_video_entry = ttk.Entry(param_frame, width=10)
+        param_frame.images_per_video_entry.insert(0, "8")
+        param_frame.images_per_video_entry.grid(column=1, row=1, sticky=tk.W)
+
+        ttk.Label(param_frame, text="Rows").grid(column=0, row=2, sticky=tk.W)
+        param_frame.rows_entry = ttk.Entry(param_frame, width=10)
+        param_frame.rows_entry.insert(0, "2")
+        param_frame.rows_entry.grid(column=1, row=2, sticky=tk.W)
+
+        ttk.Label(param_frame, text="Columns").grid(column=0, row=3, sticky=tk.W)
+        param_frame.cols_entry = ttk.Entry(param_frame, width=10)
+        param_frame.cols_entry.insert(0, "4")
+        param_frame.cols_entry.grid(column=1, row=3, sticky=tk.W)
+
+        param_frame.include_first_frame_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(
+            param_frame,
+            text="Include First Frame",
+            variable=param_frame.include_first_frame_var,
+        ).grid(column=0, row=4, columnspan=2, sticky=tk.W)
+
+        ttk.Label(param_frame, text="Seconds per Frame").grid(
+            column=0, row=5, sticky=tk.W
+        )
+        param_frame.seconds_per_frame_entry = ttk.Entry(param_frame, width=10)
+        param_frame.seconds_per_frame_entry.insert(0, "360")
+        param_frame.seconds_per_frame_entry.grid(column=1, row=5, sticky=tk.W)
+
+        ttk.Label(param_frame, text="Min Threshold").grid(column=0, row=6, sticky=tk.W)
+        param_frame.min_threshold_entry = ttk.Entry(param_frame, width=10)
+        param_frame.min_threshold_entry.insert(0, "0")
+        param_frame.min_threshold_entry.grid(column=1, row=6, sticky=tk.W)
+
+        ttk.Label(param_frame, text="Max Threshold").grid(column=0, row=7, sticky=tk.W)
+        param_frame.max_threshold_entry = ttk.Entry(param_frame, width=10)
+        param_frame.max_threshold_entry.insert(0, "255")
+        param_frame.max_threshold_entry.grid(column=1, row=7, sticky=tk.W)
+
+        param_frame.show_colorbar_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(
+            param_frame, text="Show Colorbar", variable=param_frame.show_colorbar_var
+        ).grid(column=0, row=8, columnspan=2, sticky=tk.W)
+
+        ttk.Button(
+            param_frame, text="Remove", command=lambda: remove_param_form(param_frame)
+        ).grid(column=2, row=8, sticky=tk.E)
+
+    def remove_param_form(frame):
+        frame.destroy()
 
     def on_execute():
-        params = {
-            "output_folder": output_folder_entry.get(),
-            "images_per_video": int(images_per_video_entry.get()),
-            "rows": int(rows_entry.get()),
-            "cols": int(cols_entry.get()),
-            "include_first_frame": include_first_frame_var.get(),
-            "seconds_per_frame": int(seconds_per_frame_entry.get()),
-            "min_threshold": float(min_threshold_entry.get()),
-            "max_threshold": float(max_threshold_entry.get()),
-            "show_colorbar": show_colorbar_var.get(),
-        }
+        for frame in main_frame.winfo_children():
+            params = {
+                "output_folder": frame.output_folder_entry.get(),
+                "images_per_video": int(frame.images_per_video_entry.get()),
+                "rows": int(frame.rows_entry.get()),
+                "cols": int(frame.cols_entry.get()),
+                "include_first_frame": frame.include_first_frame_var.get(),
+                "seconds_per_frame": int(frame.seconds_per_frame_entry.get()),
+                "min_threshold": float(frame.min_threshold_entry.get()),
+                "max_threshold": float(frame.max_threshold_entry.get()),
+                "show_colorbar": frame.show_colorbar_var.get(),
+            }
+            params_list.append(params)
+
         root.quit()
         root.destroy()
-        create_presentation([params])
+        create_presentation(params_list)
         print("Presentation has been created.")
 
-    root = tk.Tk()
-    root.title("Create Presentation")
+    main_frame = ttk.Frame(root, padding="10")
+    main_frame.pack(fill=tk.BOTH, expand=True)
 
-    frame = ttk.Frame(root, padding="10")
-    frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+    ttk.Button(root, text="Add Parameters", command=add_param_form).pack()
+    ttk.Button(root, text="Execute", command=on_execute).pack(side=tk.LEFT)
+    ttk.Button(root, text="Cancel", command=root.quit).pack(side=tk.RIGHT)
 
-    ttk.Label(frame, text="Output Folder").grid(column=0, row=0, sticky=tk.W)
-    output_folder_entry = ttk.Entry(frame, width=50)
-    output_folder_entry.grid(column=1, row=0, sticky=(tk.W, tk.E))
-    ttk.Button(frame, text="Browse", command=browse_folder).grid(
-        column=2, row=0, sticky=tk.W
-    )
-
-    ttk.Label(frame, text="Images per Video").grid(column=0, row=1, sticky=tk.W)
-    images_per_video_entry = ttk.Entry(frame, width=10)
-    images_per_video_entry.insert(0, "8")
-    images_per_video_entry.grid(column=1, row=1, sticky=tk.W)
-
-    ttk.Label(frame, text="Rows").grid(column=0, row=2, sticky=tk.W)
-    rows_entry = ttk.Entry(frame, width=10)
-    rows_entry.insert(0, "2")
-    rows_entry.grid(column=1, row=2, sticky=tk.W)
-
-    ttk.Label(frame, text="Columns").grid(column=0, row=3, sticky=tk.W)
-    cols_entry = ttk.Entry(frame, width=10)
-    cols_entry.insert(0, "4")
-    cols_entry.grid(column=1, row=3, sticky=tk.W)
-
-    include_first_frame_var = tk.BooleanVar(value=True)
-    ttk.Checkbutton(
-        frame, text="Include First Frame", variable=include_first_frame_var
-    ).grid(column=0, row=4, columnspan=2, sticky=tk.W)
-
-    ttk.Label(frame, text="Seconds per Frame").grid(column=0, row=5, sticky=tk.W)
-    seconds_per_frame_entry = ttk.Entry(frame, width=10)
-    seconds_per_frame_entry.insert(0, "360")
-    seconds_per_frame_entry.grid(column=1, row=5, sticky=tk.W)
-
-    ttk.Label(frame, text="Min Threshold").grid(column=0, row=6, sticky=tk.W)
-    min_threshold_entry = ttk.Entry(frame, width=10)
-    min_threshold_entry.insert(0, "0")
-    min_threshold_entry.grid(column=1, row=6, sticky=tk.W)
-
-    ttk.Label(frame, text="Max Threshold").grid(column=0, row=7, sticky=tk.W)
-    max_threshold_entry = ttk.Entry(frame, width=10)
-    max_threshold_entry.insert(0, "255")
-    max_threshold_entry.grid(column=1, row=7, sticky=tk.W)
-
-    show_colorbar_var = tk.BooleanVar(value=True)
-    ttk.Checkbutton(frame, text="Show Colorbar", variable=show_colorbar_var).grid(
-        column=0, row=8, columnspan=2, sticky=tk.W
-    )
-
-    ttk.Button(frame, text="Execute", command=on_execute).grid(
-        column=0, row=9, sticky=tk.W
-    )
-    ttk.Button(frame, text="Cancel", command=root.quit).grid(
-        column=1, row=9, sticky=tk.E
-    )
+    add_param_form()  # Add the first parameter form
 
     root.mainloop()
 
