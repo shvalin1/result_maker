@@ -1,0 +1,10 @@
+*.mp4
+*.avi
+*.mkv
+*.flv
+*.mov
+*.png
+*.jpg
+./input_video/*
+./output_images/*
+*.pptx

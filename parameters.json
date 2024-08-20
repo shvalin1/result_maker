@@ -1,0 +1,5 @@
+{
+  "input_folder": "./input_video",
+  "output_folder": "./output_images",
+  "frame_interval": 30
+}
