@@ -46,6 +46,12 @@ def extract_frames():
     output_directory = "./output_images"
     if not os.path.exists(output_directory):
         os.makedirs(output_directory)
+    else:
+        # output_directoryが存在する場合、フォルダー内のすべてのファイルを削除
+        for file in os.listdir(output_directory):
+            file_path = os.path.join(output_directory, file)
+            if os.path.isfile(file_path):
+                os.remove(file_path)
 
     extracted_frames = {}
 
@@ -57,12 +63,22 @@ def extract_frames():
         frame_count = 0
         image_count = 0
 
+        # 最初のフレームを必ず保存
+        ret, frame = cap.read()
+        if ret:
+            output_path = os.path.join(
+                output_directory, f"{video_file[:-4]}_{frame_count:06d}.jpg"
+            )
+            cv2.imwrite(output_path, frame)
+            image_count += 1
+            frame_count += 1
+
         while True:
             ret, frame = cap.read()
             if not ret:
                 break
 
-            if frame_count % interval == 0:
+            if (frame_count - 1) % interval == 0:
                 output_path = os.path.join(
                     output_directory, f"{video_file[:-4]}_{frame_count:06d}.jpg"
                 )
@@ -73,9 +89,10 @@ def extract_frames():
 
         cap.release()
         extracted_frames[video_file] = image_count
-        print(f"{video_file}: Extracted {image_count} images.")
+        print(f"{video_file}: {image_count}枚の画像を抽出しました。")
 
     show_slide_parameters_gui(extracted_frames)
+
 
 
 def show_slide_parameters_gui(extracted_frames):
@@ -166,7 +183,7 @@ def show_slide_parameters_gui(extracted_frames):
 
 
 def create_colorbar(min_value, max_value):
-    fig, ax = plt.subplots(figsize=(0.5, 5))  # 幅を0.5に変更してカラーバーを細くする
+    fig, ax = plt.subplots(figsize=(0.5, 7))  # 幅を0.5に変更してカラーバーを細くする
     gradient = np.linspace(min_value, max_value, 256).reshape(256, 1)
     ax.imshow(
         gradient, aspect="auto", cmap="jet_r", extent=[0, 1, min_value, max_value]
@@ -195,10 +212,12 @@ def group_images_by_video(image_folder, include_first_frame):
     ]
     image_groups = {}
     for image_file in image_files:
-        video_name = image_file.split("_")[0]
+        video_name = "_".join(
+            image_file.split("_")[:-1]
+        )  # 最後の部分を除いた名前を取得
         frame_number = int(image_file.split("_")[-1].split(".")[0])
-        if not include_first_frame and frame_number == 0:
-            continue
+        # if not include_first_frame and frame_number == 0:
+        #     continue
         if video_name not in image_groups:
             image_groups[video_name] = []
         image_groups[video_name].append(image_file)
@@ -308,7 +327,19 @@ def create_presentation(params_list):
         )  # スライドの半分から余白を引いた高さ
 
         if params["show_colorbar"]:
-            # ... カラーバーの処理 ...
+            # カラーバーの処理
+            colorbar_path = create_colorbar(
+                params["min_threshold"], params["max_threshold"]
+            )
+            colorbar_left = Cm(0.5)
+            colorbar_width = Cm(1)
+            slide.shapes.add_picture(
+                colorbar_path,
+                colorbar_left,
+                video_index * (SLIDE_HEIGHT / 2) + Cm(3),
+                colorbar_width,
+                available_height / 2,
+            )
             table_left = colorbar_left + colorbar_width + Cm(0.5)
 
         max_table_width = SLIDE_WIDTH - table_left - Cm(0.5)
