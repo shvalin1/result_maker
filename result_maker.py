@@ -56,40 +56,48 @@ def extract_frames():
     extracted_frames = {}
 
     for video_file in video_list.get(0, tk.END):
-        interval = int(frame_interval_entry.get())
-        video_path = os.path.join(directory, video_file)
-        cap = cv2.VideoCapture(video_path)
+            interval = int(frame_interval_entry.get())
+            video_path = os.path.join(directory, video_file)
+            cap = cv2.VideoCapture(video_path)
 
-        frame_count = 0
-        image_count = 0
-
-        # 最初のフレームを必ず保存
-        ret, frame = cap.read()
-        if ret:
-            output_path = os.path.join(
-                output_directory, f"{video_file[:-4]}_{frame_count:06d}.jpg"
-            )
-            cv2.imwrite(output_path, frame)
-            image_count += 1
-            frame_count += 1
-
-        while True:
+            frame_count = 0
+            image_count = 0
+            # 最初のフレームを必ず保存
             ret, frame = cap.read()
-            if not ret:
-                break
-
-            if (frame_count - 1) % interval == 0:
+            if ret:
                 output_path = os.path.join(
                     output_directory, f"{video_file[:-4]}_{frame_count:06d}.jpg"
                 )
                 cv2.imwrite(output_path, frame)
                 image_count += 1
 
-            frame_count += 1
+            last_frame = None
+            while True:
+                ret, frame = cap.read()
+                if not ret:
+                    break
 
-        cap.release()
-        extracted_frames[video_file] = image_count
-        print(f"{video_file}: {image_count}枚の画像を抽出しました。")
+                if frame_count  % interval == 0:
+                    output_path = os.path.join(
+                        output_directory, f"{video_file[:-4]}_{frame_count:06d}.jpg"
+                    )
+                    cv2.imwrite(output_path, frame)
+                    image_count += 1
+
+                last_frame = frame
+                frame_count += 1
+
+            # 最後のフレームを必ず保存
+            if last_frame is not None:
+                output_path = os.path.join(
+                    output_directory, f"{video_file[:-4]}_{frame_count:06d}.jpg"
+                )
+                cv2.imwrite(output_path, last_frame)
+                image_count += 1
+
+            cap.release()
+            extracted_frames[video_file] = image_count
+            print(f"{video_file}: {image_count}枚の画像を抽出しました。")
 
     show_slide_parameters_gui(extracted_frames)
 
@@ -257,7 +265,9 @@ def calculate_table_height(cell_width, rows, image_aspect_ratio):
 
 
 def format_time(seconds):
-    return str(datetime.timedelta(seconds=seconds)).split(".")[0]
+    hours = seconds // 3600
+    minutes = (seconds % 3600) // 60
+    return f"{hours:02d}:{minutes:02d}"
 
 
 def add_image_to_slide(
@@ -294,12 +304,12 @@ def add_image_to_slide(
     )
 
     frame_number = int(os.path.basename(img_path).split("_")[-1].split(".")[0])
-    elapsed_time = format_time(frame_number * seconds_per_frame)
+    elapsed_time = format_time(frame_number * 6 * 60)  # フレーム数 × 6分
     txBox = slide.shapes.add_textbox(
         left, top + available_height, cell_width, frame_text_height
     )
     tf = txBox.text_frame
-    tf.text = f"{elapsed_time.split(':')[0]}:{elapsed_time.split(':')[1]}, frame:{frame_number}"
+    tf.text = f"{elapsed_time}, frame:{frame_number}"
     tf.paragraphs[0].alignment = PP_ALIGN.CENTER
     tf.paragraphs[0].font.size = Pt(10)  # フォントサイズを小さくして2行に収める
 
