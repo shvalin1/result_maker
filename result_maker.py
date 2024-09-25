@@ -6,8 +6,6 @@ from pptx.util import Pt, Cm
 from pptx.enum.text import PP_ALIGN
 from pptx.enum.shapes import MSO_SHAPE
 from pptx.dml.color import RGBColor
-import os
-import json
 from PIL import Image
 import numpy as np
 import matplotlib.pyplot as plt
@@ -22,73 +20,170 @@ import io
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
 sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8")
 
-
-# パラメータリストファイルの読み込み
-with open("parameters_list.json", "r") as f:
-    params_list = json.load(f)
-
-# 各パラメータセットに対して処理を実行
-for params in params_list:
-    # 入力動画フォルダと出力画像フォルダの設定
-    input_folder = params.get("input_folder", "./input_video")
-    output_folder = params.get("output_folder", "./output_images")
-
-    # 出力フォルダが存在しない場合は作成
-    if not os.path.exists(output_folder):
-        os.makedirs(output_folder)
-
-    # frame_intervalを直接読み込む
-    frame_interval = params.get(
-        "frame_interval", 10800
-    )  # デフォルト値は10800（360秒 * 30fps）
-
-    # 動画ファイルの処理
-    for video_file in os.listdir(input_folder):
-        if video_file.endswith((".mp4", ".avi", ".mov")):  # 対応する動画形式
-            video_path = os.path.join(input_folder, video_file)
-            cap = cv2.VideoCapture(video_path)
-
-            frame_count = 0
-            image_count = 0
-            max_images = params.get("images_per_video", 8)
-
-            while True:
-                ret, frame = cap.read()
-                if not ret:
-                    break
-
-                if frame_count % frame_interval == 0 or (
-                    params.get("include_first_frame", True) and frame_count == 0
-                ):
-                    output_path = os.path.join(
-                        output_folder, f"{video_file[:-4]}_{frame_count:06d}.jpg"
-                    )
-                    cv2.imwrite(output_path, frame)
-                    image_count += 1
-
-                    if image_count >= max_images:
-                        break
-
-                frame_count += 1
-
-            cap.release()
-
-print("すべてのパラメータセットに対する処理が完了しました。")
-
-
 # 定数の定義
 SLIDE_WIDTH = Cm(21)
 SLIDE_HEIGHT = Cm(29.7)
 TABLE_HEIGHT = Cm(11)  # 表の高さを短くする
 
 
-def load_parameters(file_path):
-    with open(file_path, "r") as f:
-        return json.load(f)
+def select_video_directory():
+    directory = filedialog.askdirectory()
+    video_directory_entry.delete(0, tk.END)
+    video_directory_entry.insert(0, directory)
+    update_video_list()
+
+
+def update_video_list():
+    video_list.delete(0, tk.END)
+    directory = video_directory_entry.get()
+    for file in os.listdir(directory):
+        if file.endswith((".mp4", ".avi", ".mov")):
+            video_list.insert(tk.END, file)
+
+
+def extract_frames():
+    directory = video_directory_entry.get()
+    output_directory = "./output_images"
+    if not os.path.exists(output_directory):
+        os.makedirs(output_directory)
+    else:
+        # output_directoryが存在する場合、フォルダー内のすべてのファイルを削除
+        for file in os.listdir(output_directory):
+            file_path = os.path.join(output_directory, file)
+            if os.path.isfile(file_path):
+                os.remove(file_path)
+
+    extracted_frames = {}
+
+    for video_file in video_list.get(0, tk.END):
+        interval = int(frame_interval_entry.get())
+        video_path = os.path.join(directory, video_file)
+        cap = cv2.VideoCapture(video_path)
+
+        frame_count = 0
+        image_count = 0
+
+        # 最初のフレームを必ず保存
+        ret, frame = cap.read()
+        if ret:
+            output_path = os.path.join(
+                output_directory, f"{video_file[:-4]}_{frame_count:06d}.jpg"
+            )
+            cv2.imwrite(output_path, frame)
+            image_count += 1
+            frame_count += 1
+
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                break
+
+            if (frame_count - 1) % interval == 0:
+                output_path = os.path.join(
+                    output_directory, f"{video_file[:-4]}_{frame_count:06d}.jpg"
+                )
+                cv2.imwrite(output_path, frame)
+                image_count += 1
+
+            frame_count += 1
+
+        cap.release()
+        extracted_frames[video_file] = image_count
+        print(f"{video_file}: {image_count}枚の画像を抽出しました。")
+
+    show_slide_parameters_gui(extracted_frames)
+
+
+
+def show_slide_parameters_gui(extracted_frames):
+    params_window = tk.Toplevel(root)
+    params_window.title("Slide Parameters Settings")
+
+    params_list = []
+
+    def add_param_form(video_name, image_count):
+        param_frame = ttk.Frame(params_window, padding="10")
+        param_frame.pack(fill=tk.X, expand=True)
+
+        ttk.Label(
+            param_frame, text=f"Video: {video_name} (Extracted images: {image_count})"
+        ).grid(column=0, row=0, columnspan=3, sticky=tk.W)
+
+        ttk.Label(param_frame, text="Images per Video").grid(
+            column=0, row=1, sticky=tk.W
+        )
+        param_frame.images_per_video_entry = ttk.Entry(param_frame, width=10)
+        param_frame.images_per_video_entry.insert(0, str(min(8, image_count)))
+        param_frame.images_per_video_entry.grid(column=1, row=1, sticky=tk.W)
+
+        ttk.Label(param_frame, text="Rows").grid(column=0, row=2, sticky=tk.W)
+        param_frame.rows_entry = ttk.Entry(param_frame, width=10)
+        param_frame.rows_entry.insert(0, "2")
+        param_frame.rows_entry.grid(column=1, row=2, sticky=tk.W)
+
+        ttk.Label(param_frame, text="Columns").grid(column=0, row=3, sticky=tk.W)
+        param_frame.cols_entry = ttk.Entry(param_frame, width=10)
+        param_frame.cols_entry.insert(0, "4")
+        param_frame.cols_entry.grid(column=1, row=3, sticky=tk.W)
+
+        param_frame.include_first_frame_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(
+            param_frame,
+            text="Include First Frame",
+            variable=param_frame.include_first_frame_var,
+        ).grid(column=0, row=4, columnspan=2, sticky=tk.W)
+
+        ttk.Label(param_frame, text="Seconds per Frame").grid(
+            column=0, row=5, sticky=tk.W
+        )
+        param_frame.seconds_per_frame_entry = ttk.Entry(param_frame, width=10)
+        param_frame.seconds_per_frame_entry.insert(0, "360")
+        param_frame.seconds_per_frame_entry.grid(column=1, row=5, sticky=tk.W)
+
+        ttk.Label(param_frame, text="Min Threshold").grid(column=0, row=6, sticky=tk.W)
+        param_frame.min_threshold_entry = ttk.Entry(param_frame, width=10)
+        param_frame.min_threshold_entry.insert(0, "0")
+        param_frame.min_threshold_entry.grid(column=1, row=6, sticky=tk.W)
+
+        ttk.Label(param_frame, text="Max Threshold").grid(column=0, row=7, sticky=tk.W)
+        param_frame.max_threshold_entry = ttk.Entry(param_frame, width=10)
+        param_frame.max_threshold_entry.insert(0, "255")
+        param_frame.max_threshold_entry.grid(column=1, row=7, sticky=tk.W)
+
+        param_frame.show_colorbar_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(
+            param_frame, text="Show Colorbar", variable=param_frame.show_colorbar_var
+        ).grid(column=0, row=8, columnspan=2, sticky=tk.W)
+
+        return param_frame
+
+    for video_name, image_count in extracted_frames.items():
+        params_list.append(add_param_form(video_name, image_count))
+
+    def on_execute():
+        final_params = []
+        for frame in params_list:
+            params = {
+                "output_folder": "./output_images",
+                "images_per_video": int(frame.images_per_video_entry.get()),
+                "rows": int(frame.rows_entry.get()),
+                "cols": int(frame.cols_entry.get()),
+                "include_first_frame": frame.include_first_frame_var.get(),
+                "seconds_per_frame": int(frame.seconds_per_frame_entry.get()),
+                "min_threshold": float(frame.min_threshold_entry.get()),
+                "max_threshold": float(frame.max_threshold_entry.get()),
+                "show_colorbar": frame.show_colorbar_var.get(),
+            }
+            final_params.append(params)
+
+        params_window.destroy()
+        create_presentation(final_params)
+
+    ttk.Button(params_window, text="Execute", command=on_execute).pack()
 
 
 def create_colorbar(min_value, max_value):
-    fig, ax = plt.subplots(figsize=(0.5, 5))  # 幅を0.5に変更してカラーバーを細くする
+    fig, ax = plt.subplots(figsize=(0.5, 7))  # 幅を0.5に変更してカラーバーを細くする
     gradient = np.linspace(min_value, max_value, 256).reshape(256, 1)
     ax.imshow(
         gradient, aspect="auto", cmap="jet_r", extent=[0, 1, min_value, max_value]
@@ -104,8 +199,6 @@ def create_colorbar(min_value, max_value):
     ax.set_yticks([min_value, max_value])
     ax.set_yticklabels([f"{min_value:.1f}", f"{max_value:.1f}"])
 
-    plt.tight_layout()
-
     temp_file = "temp_colorbar.png"
     plt.savefig(temp_file, dpi=300, bbox_inches="tight")
     plt.close()
@@ -119,10 +212,12 @@ def group_images_by_video(image_folder, include_first_frame):
     ]
     image_groups = {}
     for image_file in image_files:
-        video_name = image_file.split("_")[0]
+        video_name = "_".join(
+            image_file.split("_")[:-1]
+        )  # 最後の部分を除いた名前を取得
         frame_number = int(image_file.split("_")[-1].split(".")[0])
-        if not include_first_frame and frame_number == 0:
-            continue
+        # if not include_first_frame and frame_number == 0:
+        #     continue
         if video_name not in image_groups:
             image_groups[video_name] = []
         image_groups[video_name].append(image_file)
@@ -172,15 +267,27 @@ def add_image_to_slide(
         img_width, img_height = img.size
 
     aspect_ratio = img_width / img_height
-    image_height = cell_height - Cm(0.7)  # フレーム数の文字の高さを引く
-    image_width = image_height * aspect_ratio
+    frame_text_height = Cm(0.7)  # フレーム数の文字の高さ
+    available_height = cell_height - frame_text_height
 
-    if image_width > cell_width:
-        image_width = cell_width
+    # セル内の余白を設定（上下左右均等に）
+    margin = min(cell_width, available_height) * 0.05
+
+    # 画像の最大サイズを計算
+    max_width = cell_width - 2 * margin
+    max_height = available_height - 2 * margin
+
+    # アスペクト比を維持しながら、画像サイズを調整
+    if aspect_ratio > max_width / max_height:
+        image_width = max_width
         image_height = image_width / aspect_ratio
+    else:
+        image_height = max_height
+        image_width = image_height * aspect_ratio
 
+    # 画像の配置位置を計算（セル内で中央揃え）
     image_left = left + (cell_width - image_width) / 2
-    image_top = top
+    image_top = top + (available_height - image_height) / 2
 
     slide.shapes.add_picture(
         img_path, image_left, image_top, width=image_width, height=image_height
@@ -188,7 +295,9 @@ def add_image_to_slide(
 
     frame_number = int(os.path.basename(img_path).split("_")[-1].split(".")[0])
     elapsed_time = format_time(frame_number * seconds_per_frame)
-    txBox = slide.shapes.add_textbox(left, top + image_height, cell_width, Cm(0.7))
+    txBox = slide.shapes.add_textbox(
+        left, top + available_height, cell_width, frame_text_height
+    )
     tf = txBox.text_frame
     tf.text = f"{elapsed_time.split(':')[0]}:{elapsed_time.split(':')[1]}, frame:{frame_number}"
     tf.paragraphs[0].alignment = PP_ALIGN.CENTER
@@ -201,30 +310,9 @@ def create_presentation(params_list):
     prs.slide_height = SLIDE_HEIGHT
     blank_slide_layout = prs.slide_layouts[6]
 
-    # グローバルパラメータの設定（最初の要素をデフォルトとして使用）
-    global_params = params_list[0] if params_list else {}
-
-    # デフォルト値の設定
-    default_params = {
-        "show_colorbar": True,
-        "images_per_video": 8,
-        "rows": 2,
-        "cols": 4,
-        "include_first_frame": True,
-        "seconds_per_frame": 360,
-        "min_threshold": 0,
-        "max_threshold": 255,
-        "output_folder": "",
-    }
-
-    # グローバルパラメータにデフォルト値を適用
-    for key, value in default_params.items():
-        if key not in global_params:
-            global_params[key] = value
-
     image_groups = group_images_by_video(
-        global_params["output_folder"], global_params["include_first_frame"]
-    )
+        "./output_images", True
+    )  # すべての画像を含める
     video_names = list(image_groups.keys())
 
     for i, params in enumerate(params_list):
@@ -233,53 +321,52 @@ def create_presentation(params_list):
 
         video_index = i % 2
 
-        # 現在のパラメータにグローバルパラメータを適用し、その後個別のパラメータで上書き
-        current_params = global_params.copy()
-        current_params.update(params)
-
         table_left = Cm(0.5)
-        available_height = SLIDE_HEIGHT / 2 - Cm(2)
+        available_height = SLIDE_HEIGHT / 2 - Cm(
+            2
+        )  # スライドの半分から余白を引いた高さ
 
-        if current_params["show_colorbar"]:
-            colorbar_file = create_colorbar(
-                current_params["min_threshold"], current_params["max_threshold"]
+        if params["show_colorbar"]:
+            # カラーバーの処理
+            colorbar_path = create_colorbar(
+                params["min_threshold"], params["max_threshold"]
             )
-            colorbar_left, colorbar_top = Cm(0.5), video_index * (
-                SLIDE_HEIGHT / 2
-            ) + Cm(1)
-            colorbar_width, colorbar_height = (
-                Cm(1.5),
-                available_height / 2,
-            )  # 高さを半分に変更
+            colorbar_left = Cm(0.5)
+            colorbar_width = Cm(1)
             slide.shapes.add_picture(
-                colorbar_file,
+                colorbar_path,
                 colorbar_left,
-                colorbar_top,
-                width=colorbar_width,
-                height=colorbar_height,
+                video_index * (SLIDE_HEIGHT / 2) + Cm(3),
+                colorbar_width,
+                available_height / 2,
             )
-            os.remove(colorbar_file)
             table_left = colorbar_left + colorbar_width + Cm(0.5)
 
-        table_width = SLIDE_WIDTH - table_left - Cm(0.5)
-        cell_width = table_width / current_params["cols"]
+        max_table_width = SLIDE_WIDTH - table_left - Cm(0.5)
+        initial_cell_width = max_table_width / params["cols"]
 
-        # 画像のアスペクト比を取得（最初の画像を使用）
         if i < len(video_names):
             video_name = video_names[i]
-            first_image = os.path.join(
-                current_params["output_folder"], image_groups[video_name][0]
-            )
+            first_image = os.path.join("./output_images", image_groups[video_name][0])
             with Image.open(first_image) as img:
                 image_aspect_ratio = img.width / img.height
         else:
-            # ビデオが存在しない場合のデフォルト値
-            image_aspect_ratio = 16 / 9  # 一般的な動画のアスペクト比
+            image_aspect_ratio = 16 / 9
 
+        # 表の高さを計算し、利用可能な高さを超えないように調整
         table_height = calculate_table_height(
-            cell_width, current_params["rows"], image_aspect_ratio
+            initial_cell_width, params["rows"], image_aspect_ratio
         )
-        cell_height = table_height / current_params["rows"]
+        if table_height > available_height:
+            scale_factor = available_height / table_height
+            table_height = available_height
+            cell_height = table_height / params["rows"]
+            cell_width = initial_cell_width * scale_factor
+            table_width = cell_width * params["cols"]
+        else:
+            cell_height = table_height / params["rows"]
+            cell_width = initial_cell_width
+            table_width = max_table_width
 
         title_top = video_index * (SLIDE_HEIGHT / 2)
         title = slide.shapes.add_textbox(Cm(1), title_top, SLIDE_WIDTH - Cm(2), Cm(1))
@@ -297,8 +384,8 @@ def create_presentation(params_list):
             title_top + Cm(1),
             cell_width,
             cell_height,
-            current_params["rows"],
-            current_params["cols"],
+            params["rows"],
+            params["cols"],
         )
 
         if i < len(video_names):
@@ -306,11 +393,13 @@ def create_presentation(params_list):
                 image_groups[video_name],
                 key=lambda x: int(x.split("_")[-1].split(".")[0]),
             )
-            for j, img_file in enumerate(
-                group_images[: current_params["images_per_video"]]
-            ):
-                img_path = os.path.join(current_params["output_folder"], img_file)
-                row, col = j // current_params["cols"], j % current_params["cols"]
+            if not params["include_first_frame"]:
+                group_images = group_images[1:]
+            for j, img_file in enumerate(group_images[: params["images_per_video"]]):
+                if j >= params["rows"] * params["cols"]:
+                    break
+                img_path = os.path.join("./output_images", img_file)
+                row, col = j // params["cols"], j % params["cols"]
                 left = table_left + col * cell_width
                 top = title_top + Cm(1) + row * cell_height
                 add_image_to_slide(
@@ -320,125 +409,52 @@ def create_presentation(params_list):
                     top,
                     cell_width,
                     cell_height,
-                    current_params["seconds_per_frame"],
+                    params["seconds_per_frame"],
                 )
-
-    prs.save("image_summary_a4_two_videos_improved.pptx")
-
-
-def create_gui():
-    root = tk.Tk()
-    root.title("Create Presentation")
-
-    # Specify font and use UTF-8 encoding
-    default_font = tkfont.nametofont("TkDefaultFont")
-    default_font.configure(size=10, family="MS Gothic")
-    root.option_add("*Font", default_font)
-
-    params_list = []
-
-    def browse_folder(entry_widget):
-        folder_path = filedialog.askdirectory()
-        entry_widget.delete(0, tk.END)
-        entry_widget.insert(0, folder_path)
-
-    def add_param_form():
-        param_frame = ttk.Frame(main_frame, padding="10")
-        param_frame.pack(fill=tk.X, expand=True)
-
-        ttk.Label(param_frame, text="Output Folder").grid(column=0, row=0, sticky=tk.W)
-        param_frame.output_folder_entry = ttk.Entry(param_frame, width=50)
-        param_frame.output_folder_entry.grid(column=1, row=0, sticky=(tk.W, tk.E))
-        ttk.Button(
-            param_frame,
-            text="Browse",
-            command=lambda: browse_folder(param_frame.output_folder_entry),
-        ).grid(column=2, row=0, sticky=tk.W)
-
-        ttk.Label(param_frame, text="Images per Video").grid(
-            column=0, row=1, sticky=tk.W
-        )
-        param_frame.images_per_video_entry = ttk.Entry(param_frame, width=10)
-        param_frame.images_per_video_entry.insert(0, "8")
-        param_frame.images_per_video_entry.grid(column=1, row=1, sticky=tk.W)
-
-        ttk.Label(param_frame, text="Rows").grid(column=0, row=2, sticky=tk.W)
-        param_frame.rows_entry = ttk.Entry(param_frame, width=10)
-        param_frame.rows_entry.insert(0, "2")
-        param_frame.rows_entry.grid(column=1, row=2, sticky=tk.W)
-
-        ttk.Label(param_frame, text="Columns").grid(column=0, row=3, sticky=tk.W)
-        param_frame.cols_entry = ttk.Entry(param_frame, width=10)
-        param_frame.cols_entry.insert(0, "4")
-        param_frame.cols_entry.grid(column=1, row=3, sticky=tk.W)
-
-        param_frame.include_first_frame_var = tk.BooleanVar(value=True)
-        ttk.Checkbutton(
-            param_frame,
-            text="Include First Frame",
-            variable=param_frame.include_first_frame_var,
-        ).grid(column=0, row=4, columnspan=2, sticky=tk.W)
-
-        ttk.Label(param_frame, text="Seconds per Frame").grid(
-            column=0, row=5, sticky=tk.W
-        )
-        param_frame.seconds_per_frame_entry = ttk.Entry(param_frame, width=10)
-        param_frame.seconds_per_frame_entry.insert(0, "360")
-        param_frame.seconds_per_frame_entry.grid(column=1, row=5, sticky=tk.W)
-
-        ttk.Label(param_frame, text="Min Threshold").grid(column=0, row=6, sticky=tk.W)
-        param_frame.min_threshold_entry = ttk.Entry(param_frame, width=10)
-        param_frame.min_threshold_entry.insert(0, "0")
-        param_frame.min_threshold_entry.grid(column=1, row=6, sticky=tk.W)
-
-        ttk.Label(param_frame, text="Max Threshold").grid(column=0, row=7, sticky=tk.W)
-        param_frame.max_threshold_entry = ttk.Entry(param_frame, width=10)
-        param_frame.max_threshold_entry.insert(0, "255")
-        param_frame.max_threshold_entry.grid(column=1, row=7, sticky=tk.W)
-
-        param_frame.show_colorbar_var = tk.BooleanVar(value=True)
-        ttk.Checkbutton(
-            param_frame, text="Show Colorbar", variable=param_frame.show_colorbar_var
-        ).grid(column=0, row=8, columnspan=2, sticky=tk.W)
-
-        ttk.Button(
-            param_frame, text="Remove", command=lambda: remove_param_form(param_frame)
-        ).grid(column=2, row=8, sticky=tk.E)
-
-    def remove_param_form(frame):
-        frame.destroy()
-
-    def on_execute():
-        for frame in main_frame.winfo_children():
-            params = {
-                "output_folder": frame.output_folder_entry.get(),
-                "images_per_video": int(frame.images_per_video_entry.get()),
-                "rows": int(frame.rows_entry.get()),
-                "cols": int(frame.cols_entry.get()),
-                "include_first_frame": frame.include_first_frame_var.get(),
-                "seconds_per_frame": int(frame.seconds_per_frame_entry.get()),
-                "min_threshold": float(frame.min_threshold_entry.get()),
-                "max_threshold": float(frame.max_threshold_entry.get()),
-                "show_colorbar": frame.show_colorbar_var.get(),
-            }
-            params_list.append(params)
-
-        root.quit()
-        root.destroy()
-        create_presentation(params_list)
-        print("Presentation has been created.")
-
-    main_frame = ttk.Frame(root, padding="10")
-    main_frame.pack(fill=tk.BOTH, expand=True)
-
-    ttk.Button(root, text="Add Parameters", command=add_param_form).pack()
-    ttk.Button(root, text="Execute", command=on_execute).pack(side=tk.LEFT)
-    ttk.Button(root, text="Cancel", command=root.quit).pack(side=tk.RIGHT)
-
-    add_param_form()  # Add the first parameter form
-
-    root.mainloop()
+    現在の日時 = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    prs.save(f"image_summary_{現在の日時}.pptx")
+    print("プレゼンテーションが作成されました。")
+    root.quit()
 
 
-if __name__ == "__main__":
-    create_gui()
+def create_custom_style():
+    style = ttk.Style()
+    style.configure("TLabel", font=("Helvetica", 15))
+    style.configure("TButton", font=("Helvetica", 15))
+    style.configure("TEntry", font=("Helvetica", 15))
+    return style
+
+
+# メインのGUI
+root = tk.Tk()
+root.title("Video Frame Extraction")
+
+# カスタムスタイルを適用
+custom_style = create_custom_style()
+
+# 以下の行を変更
+ttk.Label(root, text="Video Directory:", style="TLabel").grid(
+    column=0, row=0, sticky=tk.W
+)
+video_directory_entry = ttk.Entry(root, width=50, font=("Helvetica", 15))
+video_directory_entry.grid(column=1, row=0)
+ttk.Button(root, text="Browse", command=select_video_directory, style="TButton").grid(
+    column=2, row=0
+)
+
+ttk.Label(root, text="Frame Interval:", style="TLabel").grid(
+    column=0, row=1, sticky=tk.W
+)
+frame_interval_entry = ttk.Entry(root, width=10, font=("Helvetica", 15))
+frame_interval_entry.grid(column=1, row=1, sticky=tk.W)
+frame_interval_entry.insert(0, "30")  # Default value
+
+video_list = tk.Listbox(root, width=50, height=10, font=("Helvetica", 15))
+video_list.grid(column=0, row=2, columnspan=3)
+
+ttk.Button(root, text="Extract Frames", command=extract_frames, style="TButton").grid(
+    column=1, row=3
+)
+
+
+root.mainloop()
