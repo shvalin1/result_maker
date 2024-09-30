@@ -205,7 +205,10 @@ def create_colorbar(min_value, max_value):
 
     # 上限値と下限値を必ず表示する
     ax.set_yticks([min_value, max_value])
-    ax.set_yticklabels([f"{min_value:.1f}", f"{max_value:.1f}"])
+    ax.set_yticklabels([
+        '0' if min_value == 0 else f"{min_value:.15g}".rstrip('0').rstrip('.'),
+        '0' if max_value == 0 else f"{max_value:.15g}".rstrip('0').rstrip('.')
+    ])
 
     temp_file = "temp_colorbar.png"
     plt.savefig(temp_file, dpi=300, bbox_inches="tight")
