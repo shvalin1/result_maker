@@ -165,7 +165,7 @@ def show_slide_parameters_gui(extracted_frames):
 
         return param_frame
 
-    for video_name, image_count in extracted_frames.items():
+    for video_name, image_count in sorted(extracted_frames.items(), key=lambda x: x[0]):
         params_list.append(add_param_form(video_name, image_count))
 
     def on_execute():
@@ -231,8 +231,9 @@ def group_images_by_video(image_folder, include_first_frame):
         #     continue
         if video_name not in image_groups:
             image_groups[video_name] = []
-        image_groups[video_name].append(image_file)
-    return image_groups
+        image_groups[video_name].append(image_file)  
+    return dict(sorted(image_groups.items()))  # 動画名でソートして返す
+
 
 
 def add_grid_lines(
